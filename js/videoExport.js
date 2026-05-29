@@ -390,18 +390,39 @@ function avcLevel(W, H, fps) {
     return 62;
 }
 
-// Returns { codec, hardwareAcceleration } or null.
-async function chooseCodec(W, H, fps, bitrate) {
-    const lvlHex = avcLevel(W, H, fps).toString(16).padStart(2, '0');
-    // Profiles: High (6400), Main (4d00), Constrained Baseline (4200).
-    const codecs = ['6400', '4d00', '4200'].map(p => 'avc1.' + p + lvlHex);
-    const accels = ['no-preference', 'prefer-hardware', 'prefer-software'];
-    for (const hardwareAcceleration of accels) {
-        for (const codec of codecs) {
-            const cfg = { codec, width: W, height: H, framerate: fps, bitrate, hardwareAcceleration, latencyMode: 'quality' };
+// Ordered codec candidates, best-compatibility first. H.264 hardware encoders
+// usually cap around 4096px, so for larger frames we fall back to HEVC / VP9 /
+// AV1 which support much bigger resolutions. Each maps to its mp4-muxer codec.
+function codecCandidates(W, H, fps) {
+    const out = [];
+    const avcHex = avcLevel(W, H, fps).toString(16).padStart(2, '0');
+    // H.264 profiles: High (6400), Main (4d00), Constrained Baseline (4200).
+    ['6400', '4d00', '4200'].forEach(p => out.push({ muxerCodec: 'avc', codec: 'avc1.' + p + avcHex }));
+    // HEVC Main (general_level_idc = level*30), high -> low.
+    [186, 180, 153, 150, 123, 120].forEach(l => {
+        out.push({ muxerCodec: 'hevc', codec: 'hev1.1.6.L' + l + '.B0' });
+        out.push({ muxerCodec: 'hevc', codec: 'hvc1.1.6.L' + l + '.B0' });
+    });
+    // VP9 profile 0, 8-bit, level high -> low (handles very large frames).
+    ['62', '61', '60', '52', '51', '50', '41', '40', '31', '21', '10'].forEach(l =>
+        out.push({ muxerCodec: 'vp9', codec: 'vp09.00.' + l + '.08' }));
+    // AV1 main profile, tier Main, 8-bit, seq_level_idx high -> low.
+    ['19', '18', '17', '16', '15', '14', '13', '12', '08', '05', '00'].forEach(l =>
+        out.push({ muxerCodec: 'av1', codec: 'av01.0.' + l + 'M.08' }));
+    return out;
+}
+
+// Returns { muxerCodec, codec, hardwareAcceleration } or null.
+async function chooseEncoder(W, H, fps, bitrate) {
+    const accels = ['prefer-hardware', 'no-preference', 'prefer-software'];
+    for (const cand of codecCandidates(W, H, fps)) {
+        for (const hardwareAcceleration of accels) {
+            const cfg = { codec: cand.codec, width: W, height: H, framerate: fps, bitrate, hardwareAcceleration, latencyMode: 'quality' };
             try {
                 const sup = await VideoEncoder.isConfigSupported(cfg);
-                if (sup && sup.supported) return { codec, hardwareAcceleration };
+                if (sup && sup.supported) {
+                    return { muxerCodec: cand.muxerCodec, codec: cand.codec, hardwareAcceleration };
+                }
             } catch (e) { /* try next */ }
         }
     }
@@ -440,12 +461,12 @@ async function exportMP4() {
     const ssEff = Math.max(1, Math.min(ss, 4096 / maxDim));
     const RW = Math.round(W * ssEff), RH = Math.round(H * ssEff);
 
-    const picked = await chooseCodec(W, H, fps, bitrate);
+    const picked = await chooseEncoder(W, H, fps, bitrate);
     if (!picked) {
-        alert(`No supported H.264 encoder config for ${W}x${H} @ ${fps}fps. Try a smaller resolution.`);
+        alert(`No supported video encoder for ${W}x${H} @ ${fps}fps (tried H.264, HEVC, VP9, AV1).\nTry a smaller resolution.`);
         return;
     }
-    const { codec, hardwareAcceleration } = picked;
+    const { muxerCodec, codec, hardwareAcceleration } = picked;
 
     btnsDisabledForExport(true);
     $('kf_progress').style.display = 'block';
@@ -454,7 +475,7 @@ async function exportMP4() {
 
     const muxer = new Muxer({
         target: new ArrayBufferTarget(),
-        video: { codec: 'avc', width: W, height: H, frameRate: fps },
+        video: { codec: muxerCodec, width: W, height: H, frameRate: fps },
         fastStart: 'in-memory',
     });
 
@@ -502,7 +523,7 @@ async function exportMP4() {
             playheadTime = t;
             updatePlayheadUI();
             $('kf_progress').value = ((i + 1) / totalFrames) * 100;
-            setStatus(`Rendering ${i + 1}/${totalFrames} @ ${resLabel()} ${fps}fps · ${(bitrate / 1e6).toFixed(0)} Mbps`);
+            setStatus(`Rendering ${i + 1}/${totalFrames} @ ${resLabel()} ${fps}fps · ${(bitrate / 1e6).toFixed(0)} Mbps · ${muxerCodec.toUpperCase()}`);
 
             // Yield + relieve encoder backpressure.
             if (encoder.encodeQueueSize > 8 || i % 5 === 0) await yieldFrame();
