@@ -45,12 +45,11 @@ animsDiv = document.getElementById("anims"), mixer, currentAnimation, actions = 
 var materials = {
     default_material: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }),
     default_material2: new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }),
-    wireframeMaterial: new THREE.MeshPhongMaterial({
+    wireframeMaterial: new THREE.MeshBasicMaterial({
         side: THREE.DoubleSide,
-        wireframe: true, 
-        shininess: 100,
-        specular: 0x000, emissive: 0x000,
-        flatShading: false, depthWrite: true, depthTest: true
+        wireframe: true,
+        color: 0xffffff,
+        depthWrite: true, depthTest: true
     }),
     wireframeMaterial2: new THREE.LineBasicMaterial({ wireframe: true, color: 0xffffff }),
     wireframeAndModel: new THREE.LineBasicMaterial({ color: 0xffffff }),
@@ -222,6 +221,8 @@ function initScene(index) {
     composer.addPass( renderPass );
     composer.addPass(outlinePass);
     composer.addPass( fxaaPass );
+
+    window.fxaaPass = fxaaPass; // exposed so videoExport.js can rescale AA at export resolution
     
     /*LOAD SAMPLE MODELS*/
     var sceneInfo = modelList[index]; //index from array of sample models in html select options
@@ -434,7 +435,9 @@ function animate() {
 
     delta = clock.getDelta();
     requestAnimationFrame(animate);
-    
+
+    if (window.videoExporting) return; // paused during preview/export, driven manually by videoExport.js
+
     if (mixer) {
         mixer.update(delta);
     }

@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 
     <link rel='stylesheet' href='css/main_style.css' />
+    <link rel='stylesheet' href='css/video.css' />
 
     <!--Three.js scripts-->
     <script src="js/three.js"></script>
@@ -406,7 +407,51 @@
                         </li>
                     </ul>
                 </li>
-            </ul>           
+
+                <li class='dropdown'>
+                    <a href='#'><img src="images/rotation.png" class="image" />Video Export</a>
+                    <ul id="video_export_panel">
+                        <li class="kf_controls">
+                            <button type="button" id="kf_add">Add Keyframe</button>
+                            <button type="button" id="kf_clear">Clear</button>
+                            <button type="button" id="kf_preview" disabled>Preview</button>
+                            <button type="button" id="kf_export" disabled>Export MP4</button>
+                        </li>
+
+                        <li>
+                            <span class="kf_field"><label for="kf_res">Resolution</label>
+                                <select id="kf_res">
+                                    <option value="720p">720p (1280×720)</option>
+                                    <option value="1080p" selected>1080p (1920×1080)</option>
+                                    <option value="1440p">1440p (2560×1440)</option>
+                                    <option value="4k">4K (3840×2160)</option>
+                                    <option value="custom">Custom…</option>
+                                </select>
+                            </span>
+                            <span class="kf_field" id="kf_custom" style="display:none">
+                                <label>W <input type="number" id="kf_w" value="1920" min="2" step="2" style="width:70px"></label>
+                                <label>H <input type="number" id="kf_h" value="1080" min="2" step="2" style="width:70px"></label>
+                            </span>
+                            <span class="kf_field"><label for="kf_fps">FPS</label>
+                                <select id="kf_fps">
+                                    <option value="24">24</option>
+                                    <option value="30" selected>30</option>
+                                    <option value="60">60</option>
+                                </select>
+                            </span>
+                            <span class="kf_field"><label for="kf_dur">Duration (s)</label>
+                                <input type="number" id="kf_dur" value="5" min="0.5" step="0.5" style="width:60px">
+                            </span>
+                        </li>
+
+                        <li><div id="kf_list" class="kf_list"></div></li>
+                        <li>
+                            <progress id="kf_progress" class="kf_progress" value="0" max="100" style="display:none"></progress>
+                            <span id="kf_status" class="kf_status"></span>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
         </div>
         <!--Bottom Menu End-->
 
@@ -450,7 +495,8 @@
         <script src="js/utils.js"></script>
         <script src="js/main.js"></script>
         <script src="js/userModelTextures.js"></script>
-        <script src="js/userModel.js"></script>     
+        <script src="js/userModel.js"></script>
+        <script type="module" src="js/videoExport.js"></script>
     </div>
 
     <script src="js/ColourTheme.js"></script>

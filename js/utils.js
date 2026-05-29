@@ -113,27 +113,16 @@ function setWireFrame(mod) {
                 if (wire.checked) {
 
                     materials.wireframeAndModel.visible = false;
-                     if (mod.material.length > 1) {
-                         for (var i = 0; i < mod.material.length; i++) {
- 
-                             mod.material[i].wireframe = true;
-                         }
-                     }
-                     else {
-                         mod.material.wireframe = true;
-                     }
-
+                    if (!mod.userData.origMaterial) {
+                        mod.userData.origMaterial = mod.material;
+                    }
+                    mod.material = materials.wireframeMaterial;
                 }
                 else {
-                    if (mod.material.length > 1) {
-                         for (var i = 0; i < mod.material.length; i++) {
- 
-                             mod.material[i].wireframe = false;
-                         }
-                     }
-                     else {
-                        mod.material.wireframe = false;
-                     }
+                    if (mod.userData.origMaterial) {
+                        mod.material = mod.userData.origMaterial;
+                        mod.userData.origMaterial = null;
+                    }
                 }
             });
       
