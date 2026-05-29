@@ -265,14 +265,6 @@ function setBoundBox(mod) {
     mod.add(bound_box);
 }
 
-$('#bBox').change(function () {
-    if (bBox.checked) {
-        bound_box.visible = true;
-    }
-    else {
-        bound_box.visible = false;
-    }
-});
 
 function setPolarGrid(mod) {
 
@@ -292,14 +284,6 @@ function setPolarGrid(mod) {
 }
 
 var polar_grid_helper;
-$('#polar_grid').change(function () {
-    if (polar_grid.checked) {
-        polar_grid_helper.visible = true;
-    }
-    else {
-        polar_grid_helper.visible = false;
-    }
-});
 
 
 function setGrid(mod) {
@@ -315,14 +299,6 @@ function setGrid(mod) {
 }
 
 var gridHelper;
-$('#grid').change(function () {
-    if (grid.checked) {
-        gridHelper.visible = true;
-    }
-    else {
-        gridHelper.visible = false;
-    }
-});
 
 var axis_view;
 function setAxis(mod) {
@@ -336,14 +312,6 @@ function setAxis(mod) {
     mod.add(axis_view);
 }
 
-$('#axis').change(function () {
-    if (axis.checked) {
-        axis_view.visible = true;
-    }
-    else {
-        axis_view.visible = false;
-    }
-});
 
 //jQuery slider for phong shininess level
 $("#shine").slider({

@@ -395,6 +395,11 @@ input:checked + .grid:before {
     width: 30%;
 }
 
+/* Video Export is the only bottom panel now; give the timeline room. */
+.bottom_menu_item li.dropdown.video_export_li{
+    width: 70%;
+}
+
 .resetRotateButton {
     -moz-box-shadow:inset 0px 1px 0px 0px #030100;
     -webkit-box-shadow:inset 0px 1px 0px 0px #030100;

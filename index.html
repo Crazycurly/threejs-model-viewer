@@ -316,99 +316,7 @@
         <!--Bottom Menu Start-->
         <div id="bottom_menu">
             <ul class="bottom_menu_item">
-                <li class='dropdown'>
-                    <a href='#'><img src="images/rotation.png" class="image" />Model Rotation</a>
-                    <ul>
-                        <li style="display:inline-block;  margin:0 35px 0 0;"><span>Auto Rotate</span></li>
-                        <li style="display:inline-block">
-                            <span>Set Rotation Speed</span>
-                            <span id="rot_slider"></span>
-                        </li>
-                        <li>
-                            <label class="switch">
-                                <input type="checkbox" id="rotation">
-                                <span class="toggle round"></span>
-                            </label>
-                        </li>
-                        <li>Fix Rotation of Imported Models<hr style="margin-top:0px" /></li>
-
-                        <li>
-                            <div id="rotation">
-                                <div class="radioBtn">
-                                    <input type="radio" id="r1" name="rotate" value="rotateX"> Rotate X
-                                </div>  
-                                        
-                                <div class="radioBtn">
-                                    <input type="radio" id="r2" name="rotate" value="rotateY"> Rotate Y
-                                </div>  
-
-                                <div class="radioBtn">
-                                    <input type="radio" id="r3" name="rotate" value="rotateZ"> Rotate Z
-                                </div>                             
-                            </div>
-                        </li>
-
-                        <li><button class="resetRotateButton" type='reset' id="reset_rot">Reset</button></li>                     
-                    </ul>
-                </li>
-
-                <li class='dropdown'>
-                    <a href='#'><img src="images/scale.png" class="image" />Transform Model</a>
-                    <ul>
-                        <li style="margin-left:25px; font-size: 15px">
-                            <label for="transform">
-                                Attach Transform Controls:
-                                <label class="switch helper">
-                                    <input type="checkbox" id="transform">
-                                    <span class="toggle grid round"></span>
-                                </label>
-                            </label>
-                        </li>
-                        <li id="transformKey">Press S: (Scale), T: (Translate), R: (Rotate)</li>
-
-                        <li style="text-align:center; margin-top:8px;font-size: 15px">
-                            <span>Scale Up:</span> &nbsp;<button id="scale_up" style="margin:0 35px 0 0" type="button">+</button>
-                            <span>Scale Down:</span> &nbsp;<button id="scale_down" type="button">-</button>
-                        </li>
-                        
-                    </ul>
-                </li>
-
-                <li class='dropdown'>
-                    <a href='#'><img src="images/grid.png" class="image" />Model View Helpers</a>
-                    <ul style="font-size: 13.5px">
-                        <li style="display:inline-block; margin:0 25px 0 0;">
-                            <span style="font-size:18px">Grid</span>
-                            <label class="switch helper">
-                                <input type="checkbox" id="grid">
-                                <span class="toggle grid round"></span>
-                            </label>
-                        </li>
-                        <li style="display:inline-block; margin:0 25px 0 0;">
-                            <span style="font-size:18px">Polar-grid</span>
-                            <label class="switch helper">
-                                <input type="checkbox" id="polar_grid">
-                                <span class="toggle grid round"></span>
-                            </label>
-                        </li>
-                        <li style="display:inline-block; margin:0 25px 0 0;">
-                            <span style="font-size:18px">Axis</span>
-                            <label class="switch helper">
-                                <input type="checkbox" id="axis">
-                                <span class="toggle grid round"></span>
-                            </label>
-                        </li>
-                        <li style="display:inline-block; margin:0 25px 0 0;">
-                            <span style="font-size:18px">Model Box</span>
-                            <label class="switch helper">
-                                <input type="checkbox" id="bBox">
-                                <span class="toggle grid round"></span>
-                            </label>
-                        </li>
-                    </ul>
-                </li>
-
-                <li class='dropdown'>
+                <li class='dropdown video_export_li'>
                     <a href='#'><img src="images/rotation.png" class="image" />Video Export</a>
                     <ul id="video_export_panel">
                         <li class="kf_controls">
@@ -442,9 +350,34 @@
                             <span class="kf_field"><label for="kf_dur">Duration (s)</label>
                                 <input type="number" id="kf_dur" value="5" min="0.5" step="0.5" style="width:60px">
                             </span>
+                            <span class="kf_field"><label for="kf_quality">Quality</label>
+                                <select id="kf_quality">
+                                    <option value="draft">Draft (fast)</option>
+                                    <option value="standard">Standard</option>
+                                    <option value="high" selected>High (sharp)</option>
+                                </select>
+                            </span>
+                            <span class="kf_field"><label for="kf_easing">Easing</label>
+                                <select id="kf_easing">
+                                    <option value="smooth" selected>Smooth</option>
+                                    <option value="linear">Linear</option>
+                                </select>
+                            </span>
                         </li>
 
-                        <li><div id="kf_list" class="kf_list"></div></li>
+                        <li>
+                            <div id="kf_timeline" class="kf_timeline">
+                                <div id="kf_track" class="kf_track" title="Drag the playhead to scrub. Drag a ◆ to retime it.">
+                                    <div id="kf_markers" class="kf_markers"></div>
+                                    <div id="kf_playhead" class="kf_playhead"><span class="kf_playhead_handle"></span></div>
+                                </div>
+                                <div class="kf_time_labels">
+                                    <span id="kf_time_cur" class="kf_time_cur">0:00.0</span>
+                                    <span id="kf_time_end" class="kf_time_end">0:05.0</span>
+                                </div>
+                                <div id="kf_empty" class="kf_empty">No keyframes. Orbit the model and click "Add Keyframe".</div>
+                            </div>
+                        </li>
                         <li>
                             <progress id="kf_progress" class="kf_progress" value="0" max="100" style="display:none"></progress>
                             <span id="kf_status" class="kf_status"></span>

@@ -4,7 +4,7 @@ var view = document.getElementById('main_viewer');
 if (!Detector.webgl) Detector.addGetWebGLMessage();
 
 var camera, camerHelper, scene, renderer, loader,
-    stats, controls, transformControls, numOfMeshes = 0, model, modelDuplicate, sample_model, wireframe, mat, scale, delta;
+    stats, controls, numOfMeshes = 0, model, modelDuplicate, sample_model, wireframe, mat, scale, delta;
 
 const manager = new THREE.LoadingManager();
 
@@ -19,18 +19,11 @@ var ambient, directionalLight, directionalLight2, directionalLight3, pointLight,
 var backgroundScene, backgroundCamera, backgroundMesh;
 
 var amb = document.getElementById('ambient_light');
-var rot1 = document.getElementById('rotation');
 var wire = document.getElementById('wire_check');
 var model_wire = document.getElementById('model_wire');
 var phong = document.getElementById('phong_check');
 var xray = document.getElementById('xray_check');
 var glow = document.getElementById('glow_check');
-var grid = document.getElementById('grid');
-var polar_grid = document.getElementById('polar_grid');
-var axis = document.getElementById('axis');
-var bBox = document.getElementById('bBox');
-
-var transform = document.getElementById('transform');
 var smooth = document.getElementById('smooth');
 var outline = document.getElementById('outline');
 
@@ -161,36 +154,6 @@ function initScene(index) {
     controls.dampingFactor = 0.09;
     controls.rotateSpeed = 0.09;
 
-    transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.addEventListener('change', render);
-    scene.add(transformControls);
-
-    transformControls.addEventListener('mouseDown', function () {
-        controls.enabled = false;
-    });
-    transformControls.addEventListener('mouseUp', function () {
-        controls.enabled = true;
-    });
-
-    window.addEventListener('keydown', function (event) {
-
-        switch (event.keyCode) {
-
-            case 82: // R key pressed - set rotate mode
-                transformControls.setMode("rotate");
-                break;
-
-            case 84: // T key pressed - set translate mode
-                transformControls.setMode("translate");
-                break;
-
-            case 83: // S key pressed - set scale mode
-                transformControls.setMode("scale");
-                break;
-        }
-
-    });
-
     //Colour changer, to set background colour of renderer to user chosen colour
     $(".bg_select").spectrum({
         color: "#fff",
@@ -296,22 +259,6 @@ function initScene(index) {
     }, onProgress, onError);
 
 
-    $('#transform').on('change', function () {
-        
-        if (transform.checked) {
-            document.getElementById('transformKey').style.display = 'block';
-            if (modelLoaded) {
-                transformControls.attach(model);
-            }
-            else if(sample_model_loaded) {
-                transformControls.attach(sample_model);
-            }
-            
-        } else {
-            document.getElementById('transformKey').style.display = 'none';
-            transformControls.detach(scene);
-        }
-    });
 }
 
 function removeModel() {
@@ -337,23 +284,17 @@ function removeModel() {
 
     $("#red, #green, #blue, #ambient_red, #ambient_green, #ambient_blue").slider("value", 127); //Reset colour sliders
 
-    amb.checked = false; rot1.checked = false; wire.checked = false;
+    amb.checked = false; wire.checked = false;
     model_wire.checked = false; phong.checked = false; xray.checked = false;
-    glow.checked = false; grid.checked = false; polar_grid.checked = false;
-    axis.checked = false; bBox.checked = false; smooth.checked = false; 
-    transform.checked = false, smooth.disabled = false; //Uncheck any checked boxes
+    glow.checked = false;
+    smooth.checked = false; 
+    smooth.disabled = false; //Uncheck any checked boxes
     
-    transformControls.detach(scene);
 
     document.getElementById('smooth-model').innerHTML = "Smooth Model";
 
-    $('#rot_slider').slider({
-        disabled: true //disable the rotation slider
-    });
-    controls.autoRotate = false; //Stop model auto rotating if doing so on new file select
     $('#shine').slider("value", 10); //Set phong shine level back to initial
 
-    $('input[name="rotate"]').prop('checked', false); //uncheck rotate x, y or z checkboxes
     
     animsDiv.style.display = "none"; //Hide animation <div>
 }
@@ -369,42 +310,7 @@ $("#red, #green, #blue, #ambient_red, #ambient_green, #ambient_blue").slider({
     }
 });
 
-var rotVal = [40, 80, 110, 140, 170, 200, 240, 280, 340, 400, 520]; //Rotation speeds low - high
-var rotation_speed;
 
-$("#rot_slider").slider({
-    orientation: "horizontal",
-    range: "min",
-    max: rotVal.length - 1,
-    value: 0,
-    disabled: true,
-    slide: function (event, ui) {
-        rotation_speed = rotVal[ui.value]; //Set speed variable to the current selected value of slider
-    }
-});
-
-$('#rotation').change(function () {
-    if (rot1.checked) {
-        rotation_speed = rotVal[$("#rot_slider").slider("value")];
-        //set the speed to the current slider value on initial use
-        controls.autoRotate = true;
-
-        $("#rot_slider").slider({
-            disabled: false,
-            change: function (event, ui) {
-                console.log(rotVal[ui.value]);
-                controls.autoRotate = true;
-                controls.autoRotateSpeed = delta * rotation_speed;
-            }
-        });
-    }
-    else {
-        controls.autoRotate = false;
-        $('#rot_slider').slider({
-            disabled: true //disable the slider from being able to rotate object when rotation toggle is off
-        });
-    }
-});
 
 function setColours() {
 

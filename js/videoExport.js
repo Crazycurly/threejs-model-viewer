@@ -9,17 +9,28 @@ const RES_PRESETS = {
     '4k':    [3840, 2160],
 };
 
-// Each keyframe stores a camera pose. Timeline time is derived from index +
-// the current duration, so keyframes stay evenly spaced when duration changes.
-const keyframes = []; // { pos: THREE.Vector3, target: THREE.Vector3 }
+// Quality presets -> { ss: supersample factor, bpp: bits per pixel per frame }.
+// ss>1 renders larger then downscales for crisp edges; bpp drives the bitrate.
+const QUALITY_PRESETS = {
+    'draft':    { ss: 1, bpp: 0.05 },
+    'standard': { ss: 1, bpp: 0.12 },
+    'high':     { ss: 2, bpp: 0.18 },
+};
+
+// Each keyframe stores a camera pose plus its own time on the timeline.
+const keyframes = []; // { pos: THREE.Vector3, target: THREE.Vector3, time: number }
 
 let posCurve = null, targetCurve = null;
 let previewRAF = null;
+let playheadTime = 0;   // current scrub position (seconds)
+let dragKf = null;      // keyframe object being dragged
+let scrubbing = false;
 
 // --- UI refs (populated on DOMContentLoaded) -------------------------------
 let el = {};
 
 function $(id) { return document.getElementById(id); }
+function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
 
 function getDuration() {
     const v = parseFloat($('kf_dur').value);
@@ -47,7 +58,29 @@ function resLabel() {
     return sel;
 }
 
+function getQuality() {
+    return QUALITY_PRESETS[el.quality ? el.quality.value : 'high'] || QUALITY_PRESETS['high'];
+}
+
+function getEasing() {
+    return (el.easing && el.easing.value === 'linear') ? 'linear' : 'smooth';
+}
+
+// Format seconds as M:SS.d
+function fmtTime(t) {
+    t = Math.max(0, t);
+    const m = Math.floor(t / 60);
+    const s = t - m * 60;
+    const whole = Math.floor(s);
+    const tenth = Math.floor((s - whole) * 10);
+    return `${m}:${String(whole).padStart(2, '0')}.${tenth}`;
+}
+
 // --- Keyframe management ---------------------------------------------------
+function sortKeyframes() {
+    keyframes.sort((a, b) => a.time - b.time);
+}
+
 function rebuildCurves() {
     posCurve = targetCurve = null;
     if (keyframes.length >= 2) {
@@ -57,24 +90,30 @@ function rebuildCurves() {
 }
 
 function addKeyframe() {
+    const dur = getDuration();
+    const lastTime = keyframes.length ? keyframes[keyframes.length - 1].time : 0;
+    const step = Math.max(0.5, dur / 4);
+    const time = keyframes.length === 0 ? 0 : Math.min(dur, lastTime + step);
     keyframes.push({
         pos: window.camera.position.clone(),
         target: window.controls.target.clone(),
+        time,
     });
+    sortKeyframes();
     rebuildCurves();
-    renderList();
+    renderTimeline();
 }
 
 function deleteKeyframe(i) {
     keyframes.splice(i, 1);
     rebuildCurves();
-    renderList();
+    renderTimeline();
 }
 
 function clearKeyframes() {
     keyframes.length = 0;
     rebuildCurves();
-    renderList();
+    renderTimeline();
 }
 
 function jumpTo(i) {
@@ -83,9 +122,12 @@ function jumpTo(i) {
     window.camera.position.copy(k.pos);
     window.controls.target.copy(k.target);
     window.controls.update();
+    playheadTime = k.time;
+    updatePlayheadUI();
 }
 
-// Fills outPos/outTarget for the given timeline time. Requires >= 1 keyframe.
+// Fills outPos/outTarget for the given timeline time. Honors per-keyframe
+// times and the selected easing. Requires >= 1 keyframe.
 function sampleAt(time, outPos, outTarget) {
     const n = keyframes.length;
     if (n === 0) return false;
@@ -94,10 +136,33 @@ function sampleAt(time, outPos, outTarget) {
         outTarget.copy(keyframes[0].target);
         return true;
     }
-    const dur = getDuration();
-    const u = dur > 0 ? Math.min(1, Math.max(0, time / dur)) : 0;
-    posCurve.getPoint(u, outPos);
-    targetCurve.getPoint(u, outTarget);
+    const t = clamp(time, 0, getDuration());
+    if (t <= keyframes[0].time) {
+        outPos.copy(keyframes[0].pos);
+        outTarget.copy(keyframes[0].target);
+        return true;
+    }
+    if (t >= keyframes[n - 1].time) {
+        outPos.copy(keyframes[n - 1].pos);
+        outTarget.copy(keyframes[n - 1].target);
+        return true;
+    }
+    let i = 0;
+    while (i < n - 1 && keyframes[i + 1].time <= t) i++;
+    const t0 = keyframes[i].time, t1 = keyframes[i + 1].time;
+    const seg = t1 - t0;
+    const localFrac = seg > 0 ? (t - t0) / seg : 0;
+
+    if (getEasing() === 'linear') {
+        outPos.lerpVectors(keyframes[i].pos, keyframes[i + 1].pos, localFrac);
+        outTarget.lerpVectors(keyframes[i].target, keyframes[i + 1].target, localFrac);
+    } else {
+        // CatmullRom segments are uniform per index, so map the time-segment
+        // onto the matching spline segment.
+        const u = (i + localFrac) / (n - 1);
+        posCurve.getPoint(u, outPos);
+        targetCurve.getPoint(u, outTarget);
+    }
     return true;
 }
 
@@ -116,35 +181,111 @@ function advanceMixer(t) {
     if (window.mixer) { window.mixer.update(t - _lastMixerT); _lastMixerT = t; }
 }
 
-// --- UI rendering ----------------------------------------------------------
-function renderList() {
-    const list = $('kf_list');
-    list.innerHTML = '';
+// --- Timeline UI -----------------------------------------------------------
+function timeFromClientX(clientX) {
+    const r = el.track.getBoundingClientRect();
+    const frac = r.width > 0 ? clamp((clientX - r.left) / r.width, 0, 1) : 0;
+    return frac * getDuration();
+}
+
+function updatePlayheadUI() {
     const dur = getDuration();
-    keyframes.forEach((k, i) => {
-        const t = keyframes.length > 1 ? (i / (keyframes.length - 1)) * dur : 0;
-        const row = document.createElement('div');
-        row.className = 'kf_row';
-        const label = document.createElement('span');
-        label.className = 'kf_label';
-        label.textContent = `#${i + 1}  ${t.toFixed(2)}s`;
-        label.title = 'Jump camera to this keyframe';
-        label.onclick = () => jumpTo(i);
-        const del = document.createElement('button');
-        del.className = 'kf_del';
-        del.textContent = '×';
+    el.playhead.style.left = (dur > 0 ? clamp(playheadTime / dur, 0, 1) * 100 : 0) + '%';
+    el.timeCur.textContent = fmtTime(playheadTime);
+    el.timeEnd.textContent = fmtTime(dur);
+}
+
+function renderTimeline() {
+    const dur = getDuration();
+    el.markers.innerHTML = '';
+
+    keyframes.forEach((kf) => {
+        const m = document.createElement('div');
+        m.className = 'kf_marker';
+        m.style.left = (dur > 0 ? clamp(kf.time / dur, 0, 1) * 100 : 0) + '%';
+
+        const dia = document.createElement('span');
+        dia.className = 'kf_diamond';
+        dia.textContent = '◆'; // ◆
+
+        const del = document.createElement('span');
+        del.className = 'kf_marker_del';
+        del.textContent = '×'; // ×
         del.title = 'Delete keyframe';
-        del.onclick = () => deleteKeyframe(i);
-        row.appendChild(label);
-        row.appendChild(del);
-        list.appendChild(row);
+
+        m.appendChild(dia);
+        m.appendChild(del);
+
+        m.title = `${fmtTime(kf.time)} — drag to retime, click to jump`;
+
+        // Drag to retime / click to jump. Track the keyframe by reference so a
+        // mid-drag re-sort can't lose it.
+        m.addEventListener('mousedown', (e) => {
+            e.stopPropagation(); // don't let the track start a scrub
+            if (e.target === del) return; // delete handled on click
+            e.preventDefault();
+            dragKf = kf;
+            let moved = false;
+            const move = (ev) => {
+                moved = true;
+                kf.time = timeFromClientX(ev.clientX);
+                renderTimeline();
+            };
+            const up = () => {
+                document.removeEventListener('mousemove', move);
+                document.removeEventListener('mouseup', up);
+                dragKf = null;
+                if (moved) { sortKeyframes(); rebuildCurves(); }
+                else { jumpTo(keyframes.indexOf(kf)); }
+                renderTimeline();
+            };
+            document.addEventListener('mousemove', move);
+            document.addEventListener('mouseup', up);
+        });
+
+        del.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteKeyframe(keyframes.indexOf(kf));
+        });
+
+        el.markers.appendChild(m);
     });
-    if (keyframes.length === 0) {
-        list.innerHTML = '<div class="kf_empty">No keyframes. Orbit the model and click "Add Keyframe".</div>';
-    }
+
+    el.empty.style.display = keyframes.length ? 'none' : 'block';
+    updatePlayheadUI();
+
     const ready = keyframes.length >= 2;
-    $('kf_preview').disabled = !ready;
-    $('kf_export').disabled = !ready;
+    el.preview.disabled = !ready;
+    el.exportBtn.disabled = !ready;
+}
+
+// --- Scrubbing (drag playhead / click track) -------------------------------
+function scrubTo(t) {
+    playheadTime = clamp(t, 0, getDuration());
+    if (keyframes.length >= 1) {
+        const pos = scrubTo._pos || (scrubTo._pos = new THREE.Vector3());
+        const target = scrubTo._target || (scrubTo._target = new THREE.Vector3());
+        sampleAt(playheadTime, pos, target);
+        applyPose(pos, target);
+        window.composer.render();
+    }
+    updatePlayheadUI();
+}
+
+function beginScrub(clientX) {
+    if (previewRAF) stopPreview();
+    scrubbing = true;
+    window.videoExporting = true; // pause main loop while we drive the camera
+    const move = (ev) => scrubTo(timeFromClientX(ev.clientX));
+    const up = () => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+        scrubbing = false;
+        window.videoExporting = false; // resume main loop
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+    scrubTo(timeFromClientX(clientX));
 }
 
 function setStatus(msg) { $('kf_status').textContent = msg || ''; }
@@ -158,16 +299,23 @@ function previewPlayback() {
     const start = performance.now();
     window.videoExporting = true; // pause main loop
     resetMixerClock();
-    $('kf_preview').textContent = 'Stop';
+    el.preview.textContent = 'Stop';
     setStatus('Previewing...');
 
     const step = () => {
         const t = (performance.now() - start) / 1000;
-        if (t >= dur) { stopPreview(); return; }
+        if (t >= dur) {
+            playheadTime = dur;
+            updatePlayheadUI();
+            stopPreview();
+            return;
+        }
         sampleAt(t, pos, target);
         applyPose(pos, target);
         advanceMixer(t);
         window.composer.render();
+        playheadTime = t;
+        updatePlayheadUI();
         previewRAF = requestAnimationFrame(step);
     };
     previewRAF = requestAnimationFrame(step);
@@ -177,7 +325,7 @@ function stopPreview() {
     if (previewRAF) cancelAnimationFrame(previewRAF);
     previewRAF = null;
     window.videoExporting = false; // resume main loop
-    $('kf_preview').textContent = 'Preview';
+    el.preview.textContent = 'Preview';
     setStatus('');
 }
 
@@ -267,7 +415,14 @@ async function exportMP4() {
     const fps = getFps();
     const dur = getDuration();
     const totalFrames = Math.max(1, Math.round(dur * fps));
-    const bitrate = Math.min(60_000_000, Math.max(1_000_000, Math.round(W * H * fps * 0.07)));
+    const { ss, bpp } = getQuality();
+    const bitrate = Math.min(80_000_000, Math.max(1_000_000, Math.round(W * H * fps * bpp)));
+
+    // Supersample factor, capped so the render buffer stays within GL/encoder
+    // limits (~4096 px on the long edge). 4K therefore renders ~1x (crisp natively).
+    const maxDim = Math.max(W, H);
+    const ssEff = Math.max(1, Math.min(ss, 4096 / maxDim));
+    const RW = Math.round(W * ssEff), RH = Math.round(H * ssEff);
 
     const picked = await chooseCodec(W, H, fps, bitrate);
     if (!picked) {
@@ -276,9 +431,7 @@ async function exportMP4() {
     }
     const { codec, hardwareAcceleration } = picked;
 
-    const btn = $('kf_export');
-    btn.disabled = true;
-    $('kf_preview').disabled = true;
+    btnsDisabledForExport(true);
     $('kf_progress').style.display = 'block';
     $('kf_progress').value = 0;
     window.videoExporting = true;
@@ -295,10 +448,20 @@ async function exportMP4() {
     });
     encoder.configure({ codec, width: W, height: H, framerate: fps, bitrate, hardwareAcceleration });
 
+    // Offscreen canvas for the high-quality downscale when supersampling.
+    let dsCanvas = null, dsCtx = null;
+    if (ssEff > 1) {
+        dsCanvas = document.createElement('canvas');
+        dsCanvas.width = W; dsCanvas.height = H;
+        dsCtx = dsCanvas.getContext('2d');
+        dsCtx.imageSmoothingEnabled = true;
+        dsCtx.imageSmoothingQuality = 'high';
+    }
+
     const pos = new THREE.Vector3(), target = new THREE.Vector3();
 
     try {
-        applyExportSize(W, H);
+        applyExportSize(RW, RH);
         resetMixerClock();
         for (let i = 0; i < totalFrames; i++) {
             const t = i / fps;
@@ -308,13 +471,20 @@ async function exportMP4() {
             window.composer.render();
 
             // Capture synchronously while the drawing buffer is still intact.
-            const frame = new VideoFrame(window.renderer.domElement, {
+            let frameSrc = window.renderer.domElement;
+            if (ssEff > 1) {
+                dsCtx.drawImage(window.renderer.domElement, 0, 0, W, H);
+                frameSrc = dsCanvas;
+            }
+            const frame = new VideoFrame(frameSrc, {
                 timestamp: Math.round(i * 1e6 / fps),
                 duration: Math.round(1e6 / fps),
             });
             encoder.encode(frame, { keyFrame: i % (2 * fps) === 0 });
             frame.close();
 
+            playheadTime = t;
+            updatePlayheadUI();
             $('kf_progress').value = ((i + 1) / totalFrames) * 100;
             setStatus(`Rendering ${i + 1}/${totalFrames} @ ${resLabel()} ${fps}fps`);
 
@@ -345,22 +515,62 @@ async function exportMP4() {
         restoreViewerSize();
         window.videoExporting = false;
         $('kf_progress').style.display = 'none';
-        btn.disabled = false;
-        $('kf_preview').disabled = false;
+        btnsDisabledForExport(false);
     }
 }
 
+function btnsDisabledForExport(busy) {
+    el.add.disabled = busy;
+    el.clear.disabled = busy;
+    el.preview.disabled = busy || keyframes.length < 2;
+    el.exportBtn.disabled = busy || keyframes.length < 2;
+}
+
 // --- Wiring ----------------------------------------------------------------
+function onDurationChange() {
+    const dur = getDuration();
+    keyframes.forEach(k => { if (k.time > dur) k.time = dur; });
+    if (playheadTime > dur) playheadTime = dur;
+    sortKeyframes();
+    rebuildCurves();
+    renderTimeline();
+}
+
 function wire() {
-    $('kf_add').onclick = addKeyframe;
-    $('kf_clear').onclick = clearKeyframes;
-    $('kf_preview').onclick = () => { previewRAF ? stopPreview() : previewPlayback(); };
-    $('kf_export').onclick = exportMP4;
-    $('kf_res').onchange = () => {
-        $('kf_custom').style.display = $('kf_res').value === 'custom' ? 'block' : 'none';
+    el = {
+        add: $('kf_add'),
+        clear: $('kf_clear'),
+        preview: $('kf_preview'),
+        exportBtn: $('kf_export'),
+        res: $('kf_res'),
+        custom: $('kf_custom'),
+        quality: $('kf_quality'),
+        easing: $('kf_easing'),
+        track: $('kf_track'),
+        markers: $('kf_markers'),
+        playhead: $('kf_playhead'),
+        timeCur: $('kf_time_cur'),
+        timeEnd: $('kf_time_end'),
+        empty: $('kf_empty'),
     };
-    $('kf_dur').onchange = renderList; // re-spacing labels
-    renderList();
+
+    el.add.onclick = addKeyframe;
+    el.clear.onclick = clearKeyframes;
+    el.preview.onclick = () => { previewRAF ? stopPreview() : previewPlayback(); };
+    el.exportBtn.onclick = exportMP4;
+    el.res.onchange = () => {
+        el.custom.style.display = el.res.value === 'custom' ? 'inline-flex' : 'none';
+    };
+    $('kf_dur').oninput = onDurationChange;
+
+    // Scrub by dragging the playhead or clicking the track background.
+    el.track.addEventListener('mousedown', (e) => {
+        if (e.target.closest && e.target.closest('.kf_marker')) return; // markers handle themselves
+        e.preventDefault();
+        beginScrub(e.clientX);
+    });
+
+    renderTimeline();
 }
 
 if (document.readyState === 'loading') {
