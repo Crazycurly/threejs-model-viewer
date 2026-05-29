@@ -346,16 +346,20 @@ function stopPreview() {
 }
 
 // --- Export size handling --------------------------------------------------
-function applyExportSize(W, H) {
+// useComposer=false skips the post-processing render targets (FXAA + outline +
+// extra buffers), which are the VRAM hogs that cause CONTEXT_LOST at huge sizes.
+function applyExportSize(W, H, useComposer) {
     window.renderer.setPixelRatio(1);
     window.renderer.setSize(W, H, false);
-    window.composer.setSize(W, H);
     window.camera.aspect = W / H;
     window.camera.updateProjectionMatrix();
-    if (window.fxaaPass) {
-        window.fxaaPass.material.uniforms['resolution'].value.set(1 / W, 1 / H);
+    if (useComposer) {
+        window.composer.setSize(W, H);
+        if (window.fxaaPass) {
+            window.fxaaPass.material.uniforms['resolution'].value.set(1 / W, 1 / H);
+        }
+        if (window.outlinePass) window.outlinePass.setSize(W, H);
     }
-    if (window.outlinePass) window.outlinePass.setSize(W, H);
 }
 
 function restoreViewerSize() {
@@ -461,6 +465,17 @@ async function exportMP4() {
     const ssEff = Math.max(1, Math.min(ss, 4096 / maxDim));
     const RW = Math.round(W * ssEff), RH = Math.round(H * ssEff);
 
+    // GPU sanity: refuse sizes past the max texture size.
+    const maxTex = (window.renderer.capabilities && window.renderer.capabilities.maxTextureSize) || 8192;
+    if (Math.max(RW, RH) > maxTex) {
+        alert(`${W}x${H} exceeds this GPU's max texture size (${maxTex}px). Try a smaller resolution.`);
+        return;
+    }
+    // Above ~4K the post-processing render targets blow the VRAM budget and the
+    // WebGL context is lost, so render the scene directly (no FXAA/outline) there.
+    const COMPOSER_MAX_PIXELS = 8_500_000; // ~4K (3840x2160)
+    const useComposer = (RW * RH) <= COMPOSER_MAX_PIXELS;
+
     const picked = await chooseEncoder(W, H, fps, bitrate);
     if (!picked) {
         alert(`No supported video encoder for ${W}x${H} @ ${fps}fps (tried H.264, HEVC, VP9, AV1).\nTry a smaller resolution.`);
@@ -497,15 +512,23 @@ async function exportMP4() {
 
     const pos = new THREE.Vector3(), target = new THREE.Vector3();
 
+    // Detect GPU context loss (out-of-memory at extreme sizes) and abort cleanly.
+    let contextLost = false;
+    const glCanvas = window.renderer.domElement;
+    const onContextLost = (e) => { e.preventDefault(); contextLost = true; };
+    glCanvas.addEventListener('webglcontextlost', onContextLost);
+
     try {
-        applyExportSize(RW, RH);
+        applyExportSize(RW, RH, useComposer);
         resetMixerClock();
         for (let i = 0; i < totalFrames; i++) {
+            if (contextLost) throw new Error('WebGL context lost — the GPU ran out of memory at this resolution. Try a smaller one.');
             const t = i / fps;
             sampleAt(t, pos, target);
             applyPose(pos, target);
             advanceMixer(t);
-            window.composer.render();
+            if (useComposer) window.composer.render();
+            else window.renderer.render(window.scene, window.camera);
 
             // Capture synchronously while the drawing buffer is still intact.
             let frameSrc = window.renderer.domElement;
@@ -548,8 +571,9 @@ async function exportMP4() {
         setStatus('Export failed: ' + e.message);
         alert('Export failed: ' + e.message);
     } finally {
+        glCanvas.removeEventListener('webglcontextlost', onContextLost);
         try { encoder.close(); } catch (e) {}
-        restoreViewerSize();
+        try { restoreViewerSize(); } catch (e) {}
         window.videoExporting = false;
         $('kf_progress').style.display = 'none';
         btnsDisabledForExport(false);
