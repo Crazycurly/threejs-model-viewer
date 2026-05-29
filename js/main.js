@@ -84,7 +84,8 @@ function initScene(index) {
     renderer = new THREE.WebGLRenderer();
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight)
-    renderer.setClearColor(0x292121); //565646, 29212
+    renderer.setClearColor(0x000000); //default background black
+    document.body.style.background = '#000000';
 
     view.appendChild(renderer.domElement);
 
@@ -119,6 +120,7 @@ function initScene(index) {
     });
   
     ambient = new THREE.AmbientLight(0x404040);
+    scene.add(ambient); //on by default (checkbox checked)
     $('#ambient_light').change(function () {
         if (amb.checked) {
             scene.add(ambient);
@@ -156,7 +158,7 @@ function initScene(index) {
 
     //Colour changer, to set background colour of renderer to user chosen colour
     $(".bg_select").spectrum({
-        color: "#fff",
+        color: "#000",
         change: function (color) {
             $("#basic_log").text("Hex Colour Selected: " + color.toHexString()); //Log information
             var bg_value = $(".bg_select").spectrum('get').toHexString(); //Get the colour selected
@@ -271,10 +273,8 @@ function removeModel() {
     fbxLoaded = false;
     gltfLoaded = false;
     
-    if (ambient) {
-        scene.remove(ambient);
-    }
-    
+    // ambient stays in the scene — on by default
+
     $('#point_light').slider("value", 0.5);
     pointLight.intensity = 0.5;
 
@@ -284,7 +284,7 @@ function removeModel() {
 
     $("#red, #green, #blue, #ambient_red, #ambient_green, #ambient_blue").slider("value", 127); //Reset colour sliders
 
-    amb.checked = false; wire.checked = false;
+    amb.checked = true; wire.checked = true; //defaults: ambient + wireframe on
     model_wire.checked = false; phong.checked = false; xray.checked = false;
     glow.checked = false;
     smooth.checked = false; 

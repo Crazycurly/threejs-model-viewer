@@ -142,6 +142,18 @@ function setWireFrame(mod) {
             }
         });
     }
+
+    // Apply pre-checked default (wireframe on at startup) directly, without
+    // firing the change handler that would clear the other toggles.
+    if (wire.checked) {
+        materials.wireframeAndModel.visible = false;
+        if (modelWithTextures || fbxLoaded || gltfLoaded) {
+            if (!mod.userData.origMaterial) {
+                mod.userData.origMaterial = mod.material;
+            }
+        }
+        mod.material = materials.wireframeMaterial;
+    }
 }
 
 function setWireframeAndModel(mod) {

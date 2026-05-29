@@ -395,9 +395,19 @@ input:checked + .grid:before {
     width: 30%;
 }
 
-/* Video Export is the only bottom panel now; give the timeline room. */
+/* Video Export is the only bottom panel now; fill all the bottom menu space. */
 .bottom_menu_item li.dropdown.video_export_li{
-    width: 70%;
+    width: 100%;
+}
+
+/* Always open — no click needed to reveal the timeline/export controls. */
+#video_export_panel{
+    display: block;
+}
+
+/* The header link is now a static title (toggle removed). */
+.video_export_li > a{
+    cursor: default;
 }
 
 .resetRotateButton {
