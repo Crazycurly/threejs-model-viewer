@@ -11,11 +11,17 @@ const RES_PRESETS = {
 
 // Quality presets -> { ss: supersample factor, bpp: bits per pixel per frame }.
 // ss>1 renders larger then downscales for crisp edges; bpp drives the bitrate.
+// 'lossless' is visually near-lossless: huge bitrate + 2x supersample.
 const QUALITY_PRESETS = {
     'draft':    { ss: 1, bpp: 0.05 },
     'standard': { ss: 1, bpp: 0.12 },
     'high':     { ss: 2, bpp: 0.18 },
+    'lossless': { ss: 2, bpp: 0.90 },
 };
+
+// Hard ceiling for the encoder bitrate (1 Gbps) — keeps absurd values from
+// being rejected outright while still allowing near-lossless 4K.
+const MAX_BITRATE = 1_000_000_000;
 
 // Each keyframe stores a camera pose plus its own time on the timeline.
 const keyframes = []; // { pos: THREE.Vector3, target: THREE.Vector3, time: number }
@@ -60,6 +66,16 @@ function resLabel() {
 
 function getQuality() {
     return QUALITY_PRESETS[el.quality ? el.quality.value : 'high'] || QUALITY_PRESETS['high'];
+}
+
+// Manual "Bitrate (Mbps)" field overrides the preset when set (> 0).
+function getBitrate(W, H, fps) {
+    const manual = el.bitrate ? parseFloat(el.bitrate.value) : NaN;
+    if (isFinite(manual) && manual > 0) {
+        return clamp(Math.round(manual * 1e6), 1_000_000, MAX_BITRATE);
+    }
+    const { bpp } = getQuality();
+    return clamp(Math.round(W * H * fps * bpp), 1_000_000, MAX_BITRATE);
 }
 
 function getEasing() {
@@ -382,7 +398,7 @@ async function chooseCodec(W, H, fps, bitrate) {
     const accels = ['no-preference', 'prefer-hardware', 'prefer-software'];
     for (const hardwareAcceleration of accels) {
         for (const codec of codecs) {
-            const cfg = { codec, width: W, height: H, framerate: fps, bitrate, hardwareAcceleration };
+            const cfg = { codec, width: W, height: H, framerate: fps, bitrate, hardwareAcceleration, latencyMode: 'quality' };
             try {
                 const sup = await VideoEncoder.isConfigSupported(cfg);
                 if (sup && sup.supported) return { codec, hardwareAcceleration };
@@ -415,8 +431,8 @@ async function exportMP4() {
     const fps = getFps();
     const dur = getDuration();
     const totalFrames = Math.max(1, Math.round(dur * fps));
-    const { ss, bpp } = getQuality();
-    const bitrate = Math.min(80_000_000, Math.max(1_000_000, Math.round(W * H * fps * bpp)));
+    const { ss } = getQuality();
+    const bitrate = getBitrate(W, H, fps);
 
     // Supersample factor, capped so the render buffer stays within GL/encoder
     // limits (~4096 px on the long edge). 4K therefore renders ~1x (crisp natively).
@@ -446,7 +462,7 @@ async function exportMP4() {
         output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
         error: (e) => { console.error('VideoEncoder error:', e); setStatus('Encoder error: ' + e.message); },
     });
-    encoder.configure({ codec, width: W, height: H, framerate: fps, bitrate, hardwareAcceleration });
+    encoder.configure({ codec, width: W, height: H, framerate: fps, bitrate, hardwareAcceleration, latencyMode: 'quality' });
 
     // Offscreen canvas for the high-quality downscale when supersampling.
     let dsCanvas = null, dsCtx = null;
@@ -486,7 +502,7 @@ async function exportMP4() {
             playheadTime = t;
             updatePlayheadUI();
             $('kf_progress').value = ((i + 1) / totalFrames) * 100;
-            setStatus(`Rendering ${i + 1}/${totalFrames} @ ${resLabel()} ${fps}fps`);
+            setStatus(`Rendering ${i + 1}/${totalFrames} @ ${resLabel()} ${fps}fps · ${(bitrate / 1e6).toFixed(0)} Mbps`);
 
             // Yield + relieve encoder backpressure.
             if (encoder.encodeQueueSize > 8 || i % 5 === 0) await yieldFrame();
@@ -545,6 +561,7 @@ function wire() {
         res: $('kf_res'),
         custom: $('kf_custom'),
         quality: $('kf_quality'),
+        bitrate: $('kf_bitrate'),
         easing: $('kf_easing'),
         track: $('kf_track'),
         markers: $('kf_markers'),
