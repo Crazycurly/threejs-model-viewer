@@ -14,60 +14,14 @@ function registerModel(obj, name) {
 
     var isFirst = loadedModels.length === 0;
 
+    loadedModels.push({ obj: obj, name: name || ('model ' + (loadedModels.length + 1)) });
+    scene.add(obj);
+
     if (isFirst) {
-        loadedModels.push({ obj: obj, name: name || 'model 1' });
-        scene.add(obj);
-        setCamera(obj); // fit the camera to the very first model
-    } else {
-        // Place the new model BESIDE the existing ones so they don't overlap
-        // (every loader drops models at the origin), then reframe to show all.
-        offsetModel(obj);
-        loadedModels.push({ obj: obj, name: name || ('model ' + (loadedModels.length + 1)) });
-        scene.add(obj);
-        frameAll();
+        setCamera(obj); // only fit the camera to the very first model — avoid jumps on each add
     }
 
     selectModel3D(obj); // attach gizmo, update panel + list
-}
-
-// Shift obj along +X so its left edge sits just past the right edge of every
-// model already in the scene. Keeps additive loads visibly separate.
-function offsetModel(obj) {
-
-    var groupBox = new THREE.Box3();
-    var haveGroup = false;
-
-    loadedModels.forEach(function (m) {
-        groupBox.expandByObject(m.obj);
-        haveGroup = true;
-    });
-
-    if (!haveGroup) return;
-
-    var objBox = new THREE.Box3().setFromObject(obj);
-    var gap = objBox.getSize().x * 0.2 + 1; // small visual gap, never zero
-    obj.position.x += (groupBox.max.x + gap) - objBox.min.x;
-}
-
-// Move the camera so the combined bounding box of every loaded model is in view.
-function frameAll() {
-
-    var box = new THREE.Box3();
-    loadedModels.forEach(function (m) { box.expandByObject(m.obj); });
-    if (box.isEmpty()) return;
-
-    var size = box.getSize();
-    var center = box.getCenter();
-    var maxDim = Math.max(size.x, size.y, size.z);
-    var dist = maxDim / (2 * Math.tan(camera.fov * Math.PI / 360));
-
-    camera.position.set(center.x, center.y, center.z + dist * 2.2);
-    camera.lookAt(center);
-
-    if (controls) {
-        controls.target.copy(center);
-        controls.update();
-    }
 }
 
 // Make obj the active model (gizmo + panel + outline highlight act on it).
