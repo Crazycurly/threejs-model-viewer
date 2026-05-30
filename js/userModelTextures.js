@@ -78,6 +78,18 @@ var loadFiles = function (files) {
 
     }
 
+    // Remember the model + its companion files (mtl, textures) so videoExport.js
+    // can embed the whole set in a render script.
+    var primaryName = gltf_path || fbx_path || dae_path || obj_path || (files[0] && files[0].name);
+    if (primaryName) {
+        window.currentModelSource = {
+            kind: 'files',
+            files: Array.prototype.slice.call(files),
+            filename: primaryName,
+            format: primaryName.split('.').pop().toLowerCase(),
+        };
+    }
+
     manager.setURLModifier(function (url, path) {
 
         url = url.replace('data:application/', '');

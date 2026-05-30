@@ -194,6 +194,10 @@ function initScene(index) {
     loader = new THREE.OBJLoader(manager);
     var url = sceneInfo.url;
 
+    // Remember the sample model's URL so videoExport.js can fetch + embed it
+    // when building a render script.
+    window.currentModelSource = { kind: 'url', url: url, filename: url.split(/[\/\\]/).pop(), format: 'obj' };
+
     //progress/loading bar
     var onProgress = function (data) {
         if (data.lengthComputable) { //if size of file transfer is known

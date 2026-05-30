@@ -1,0 +1,18 @@
+{
+  "name": "threejs-model-viewer-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Headless renderer for .tmv.json render scripts exported from the Three.js Model Viewer. Reuses the viewer's own r90 three.js + loaders + effects under headless-gl, and encodes with ffmpeg.",
+  "type": "commonjs",
+  "bin": {
+    "tmv-render": "render.js"
+  },
+  "scripts": {
+    "render": "node render.js"
+  },
+  "dependencies": {
+    "gl": "^8.1.6",
+    "ffmpeg-static": "^5.2.0",
+    "jsdom": "^24.1.0"
+  }
+}

@@ -44,6 +44,9 @@ var loadFile = function (file) {
     var filename = file.name;
     var extension = filename.split('.').pop().toLowerCase();
 
+    // Remember the raw file so videoExport.js can embed it in a render script.
+    window.currentModelSource = { kind: 'files', files: [file], filename: filename, format: extension };
+
     var reader = new FileReader();
 
     reader.addEventListener('progress', function (data) {

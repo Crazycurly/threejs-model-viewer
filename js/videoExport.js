@@ -587,6 +587,329 @@ function btnsDisabledForExport(busy) {
     el.exportBtn.disabled = busy || keyframes.length < 2;
 }
 
+// --- Render-script (JSON) export / import ----------------------------------
+// Serializes the whole shot — timeline, camera intrinsics, full scene state
+// and the embedded model bytes — into one self-contained JSON ("render
+// script"). A headless box can then render it with server/render.js, no
+// browser needed. Loading a script back restores everything for re-editing.
+//
+// Schema is documented in server/README.md; keep this and the server in sync.
+const SCRIPT_SCHEMA = 'tmv-render-script';
+const SCRIPT_VERSION = 1;
+
+// base64 <-> ArrayBuffer (chunked so big models don't blow the call stack).
+function abToBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+}
+function base64ToAb(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+}
+function fileToBase64(file) { return file.arrayBuffer().then(abToBase64); }
+
+// Normalize window.currentModelSource (set by the model loaders) into
+// { filename, format, encoding:'base64', data, assets:[{name,data}] }.
+async function serializeModel() {
+    const src = window.currentModelSource;
+    if (!src) return null;
+    if (src.kind === 'url') {
+        const resp = await fetch(src.url);
+        const buf = await resp.arrayBuffer();
+        return { filename: src.filename, format: src.format, encoding: 'base64', data: abToBase64(buf), assets: [] };
+    }
+    // kind 'files': the file matching the recorded name is primary; rest = assets.
+    const files = src.files || [];
+    const primary = files.find(f => f.name === src.filename) || files[0];
+    const assets = [];
+    for (const f of files) {
+        if (f === primary) continue;
+        assets.push({ name: f.name, data: await fileToBase64(f) });
+    }
+    return {
+        filename: src.filename, format: src.format, encoding: 'base64',
+        data: primary ? await fileToBase64(primary) : '', assets,
+    };
+}
+
+function colorTo255(c) { return [Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255)]; }
+
+// The material toggles are mutually exclusive (shared "check" class). Report
+// whichever is active so the server / re-import can reproduce it.
+const MODE_TO_ID = { wireframe: 'wire_check', modelWire: 'model_wire', phong: 'phong_check', xray: 'xray_check', glow: 'glow_check' };
+function activeMaterialMode() {
+    if ($('glow_check') && $('glow_check').checked) return 'glow';
+    if ($('xray_check') && $('xray_check').checked) return 'xray';
+    if ($('phong_check') && $('phong_check').checked) return 'phong';
+    if ($('model_wire') && $('model_wire').checked) return 'modelWire';
+    if ($('wire_check') && $('wire_check').checked) return 'wireframe';
+    return 'default';
+}
+
+async function buildRenderScript() {
+    const [W, H] = getResolution();
+    const cam = window.camera;
+    const model = window.model;
+    const clear = window.renderer.getClearColor();
+    const ol = window.outlinePass;
+    return {
+        schema: SCRIPT_SCHEMA,
+        version: SCRIPT_VERSION,
+        createdAt: new Date().toISOString(),
+        output: {
+            width: W, height: H, fps: getFps(), duration: getDuration(),
+            quality: el.quality ? el.quality.value : 'high',
+            bitrateMbps: (el.bitrate && parseFloat(el.bitrate.value) > 0) ? parseFloat(el.bitrate.value) : null,
+            easing: getEasing(),
+        },
+        camera: { fov: cam.fov, near: cam.near, far: cam.far },
+        timeline: {
+            keyframes: keyframes.map(k => ({
+                time: k.time,
+                pos: [k.pos.x, k.pos.y, k.pos.z],
+                target: [k.target.x, k.target.y, k.target.z],
+            })),
+        },
+        scene: {
+            background: '#' + clear.getHexString(),
+            lights: {
+                ambientEnabled: !!(window.amb && window.amb.checked),
+                ambientColor255: colorTo255(window.ambient.color),
+                directionalColor255: colorTo255(window.directionalLight.color),
+                pointIntensity: window.pointLight ? window.pointLight.intensity : 0.5,
+            },
+            material: {
+                mode: activeMaterialMode(),
+                smooth: !!($('smooth') && $('smooth').checked),
+                phongShininess: window.materials.phongMaterial.shininess,
+                glowEnabled: !!(ol && ol.enabled),
+                glowEdgeStrength: ol ? ol.edgeStrength : 1,
+                glowColor: (ol && ol.visibleEdgeColor) ? '#' + ol.visibleEdgeColor.getHexString() : '#ffffff',
+            },
+            modelTransform: model ? {
+                position: [model.position.x, model.position.y, model.position.z],
+                quaternion: [model.quaternion.x, model.quaternion.y, model.quaternion.z, model.quaternion.w],
+                scale: [model.scale.x, model.scale.y, model.scale.z],
+            } : null,
+        },
+        animation: { clip: window.currentAnimation || null },
+        model: await serializeModel(),
+    };
+}
+
+async function saveRenderScript() {
+    if (keyframes.length < 1) { alert('Add at least one keyframe before saving a render script.'); return; }
+    setStatus('Building render script...');
+    try {
+        const script = await buildRenderScript();
+        if (!script.model && !confirm('No model is currently loaded — the script will have no geometry to render. Save anyway?')) {
+            setStatus('');
+            return;
+        }
+        const blob = new Blob([JSON.stringify(script, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `flythrough_${resLabel()}_${getFps()}fps.tmv.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        setStatus(`Saved render script — ${keyframes.length} keyframes.`);
+    } catch (e) {
+        console.error(e);
+        setStatus('Save failed: ' + e.message);
+        alert('Could not build render script: ' + e.message);
+    }
+}
+
+// --- Import ----------------------------------------------------------------
+function applyRenderScript(script) {
+    if (!script || script.schema !== SCRIPT_SCHEMA) { alert('Not a render script (.tmv.json).'); return; }
+    if (script.version > SCRIPT_VERSION) {
+        alert(`This render script is v${script.version}, newer than this viewer supports (v${SCRIPT_VERSION}). Update the viewer.`);
+        return;
+    }
+
+    const o = script.output || {};
+    const presetKey = Object.keys(RES_PRESETS).find(k => RES_PRESETS[k][0] === o.width && RES_PRESETS[k][1] === o.height);
+    if (presetKey) {
+        el.res.value = presetKey;
+        el.custom.style.display = 'none';
+    } else if (o.width && o.height) {
+        el.res.value = 'custom';
+        el.custom.style.display = 'inline-flex';
+        $('kf_w').value = o.width; $('kf_h').value = o.height;
+    }
+    if (o.fps) $('kf_fps').value = String(o.fps);
+    if (o.duration) $('kf_dur').value = String(o.duration);
+    if (o.quality && el.quality) el.quality.value = o.quality;
+    if (el.bitrate) el.bitrate.value = (o.bitrateMbps != null ? o.bitrateMbps : '');
+    if (el.easing && o.easing) el.easing.value = o.easing;
+
+    if (script.camera && window.camera) {
+        const c = script.camera;
+        if (c.fov) window.camera.fov = c.fov;
+        if (c.near) window.camera.near = c.near;
+        if (c.far) window.camera.far = c.far;
+        window.camera.updateProjectionMatrix();
+    }
+
+    applySceneState(script.scene);
+
+    keyframes.length = 0;
+    ((script.timeline && script.timeline.keyframes) || []).forEach(k => {
+        keyframes.push({
+            pos: new THREE.Vector3(k.pos[0], k.pos[1], k.pos[2]),
+            target: new THREE.Vector3(k.target[0], k.target[1], k.target[2]),
+            time: k.time,
+        });
+    });
+    sortKeyframes();
+    rebuildCurves();
+    onDurationChange();
+
+    loadEmbeddedModel(script);
+    setStatus('Render script loaded.');
+}
+
+// Restore lights / background. Light colours are driven by the jQuery-UI
+// sliders (main.js setColours() re-applies them every frame), so set the
+// slider values rather than the THREE color objects directly.
+function applySceneState(scene) {
+    if (!scene) return;
+    const jq = window.jQuery;
+    const L = scene.lights || {};
+    const M = scene.material || {};
+    const setSlider = (sel, v) => { if (jq) { try { jq(sel).slider('value', v); } catch (e) {} } };
+
+    if (L.directionalColor255) {
+        setSlider('#red', L.directionalColor255[0]);
+        setSlider('#green', L.directionalColor255[1]);
+        setSlider('#blue', L.directionalColor255[2]);
+    }
+    if (L.ambientColor255) {
+        setSlider('#ambient_red', L.ambientColor255[0]);
+        setSlider('#ambient_green', L.ambientColor255[1]);
+        setSlider('#ambient_blue', L.ambientColor255[2]);
+    }
+    if (L.pointIntensity != null) {
+        setSlider('#point_light', L.pointIntensity);
+        if (window.pointLight) window.pointLight.intensity = L.pointIntensity;
+    }
+    if (window.amb && typeof L.ambientEnabled === 'boolean') {
+        window.amb.checked = L.ambientEnabled;
+        if (L.ambientEnabled) window.scene.add(window.ambient);
+        else window.scene.remove(window.ambient);
+    }
+    if (scene.background && window.renderer) {
+        window.renderer.setClearColor(scene.background);
+        document.body.style.background = scene.background;
+        if (window.ssaaRenderPass) window.ssaaRenderPass.clearColor = scene.background;
+    }
+    if (M.phongShininess != null) {
+        setSlider('#shine', M.phongShininess);
+        if (window.materials) window.materials.phongMaterial.shininess = M.phongShininess;
+    }
+    if (M.glowEdgeStrength != null) {
+        setSlider('#edgeStrength', M.glowEdgeStrength);
+        if (window.outlinePass) window.outlinePass.edgeStrength = M.glowEdgeStrength;
+    }
+}
+
+function dataToFile(name, b64) {
+    return new File([base64ToAb(b64)], name, { type: 'application/octet-stream' });
+}
+
+function loadEmbeddedModel(script) {
+    const m = script.model;
+    if (!m || !m.data) return;
+    const primary = dataToFile(m.filename, m.data);
+    const prevModel = window.model;
+    const mat = script.scene && script.scene.material;
+
+    // Pre-set the material checkboxes so the loaders' synchronous "wireframe on
+    // by default" path applies the right mode while building the model.
+    presetMaterialCheckboxes(mat);
+
+    if (m.assets && m.assets.length) {
+        window.loadFiles([primary].concat(m.assets.map(a => dataToFile(a.name, a.data))));
+    } else {
+        window.loadFile(primary);
+    }
+
+    // Model load is async (FileReader + loader callbacks). Once window.model is
+    // the freshly-loaded object, re-apply the captured transform + material mode.
+    waitForModel(prevModel, (model) => {
+        applyModelTransform(model, script.scene && script.scene.modelTransform);
+        applyMaterialMode(mat);
+        renderTimeline();
+    });
+}
+
+function presetMaterialCheckboxes(mat) {
+    const mode = (mat && mat.mode) || 'default';
+    ['wire_check', 'model_wire', 'phong_check', 'xray_check', 'glow_check'].forEach(id => {
+        const node = $(id);
+        if (node) node.checked = (MODE_TO_ID[mode] === id);
+    });
+    const sm = $('smooth');
+    if (sm) sm.checked = !!(mat && mat.smooth);
+}
+
+function applyMaterialMode(mat) {
+    if (!mat) return;
+    const mode = mat.mode || 'default';
+    const id = MODE_TO_ID[mode];
+    // Wireframe is already applied by the load path; other modes need their
+    // change-handler (bound during load) to fire to swap the material.
+    if (id && mode !== 'wireframe') {
+        const node = $(id);
+        if (node) { node.checked = true; node.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+    if (mat.smooth) {
+        const sm = $('smooth');
+        if (sm && !sm.disabled) { sm.checked = true; sm.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+    if (mat.glowEnabled && window.outlinePass) window.outlinePass.enabled = true;
+}
+
+function applyModelTransform(model, t) {
+    if (!model || !t) return;
+    if (t.position) model.position.set(t.position[0], t.position[1], t.position[2]);
+    if (t.quaternion) model.quaternion.set(t.quaternion[0], t.quaternion[1], t.quaternion[2], t.quaternion[3]);
+    if (t.scale) model.scale.set(t.scale[0], t.scale[1], t.scale[2]);
+    model.updateMatrixWorld(true);
+}
+
+function waitForModel(prev, cb) {
+    let tries = 0;
+    const iv = setInterval(() => {
+        if (window.model && window.model !== prev) {
+            clearInterval(iv);
+            setTimeout(() => cb(window.model), 60); // let traverse/material bind finish
+        } else if (++tries > 120) {                  // ~6s timeout
+            clearInterval(iv);
+        }
+    }, 50);
+}
+
+function loadRenderScriptFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try { applyRenderScript(JSON.parse(e.target.result)); }
+        catch (err) { alert('Could not parse render script: ' + err.message); }
+    };
+    reader.readAsText(file);
+}
+
 // --- Wiring ----------------------------------------------------------------
 function onDurationChange() {
     const dur = getDuration();
@@ -614,12 +937,22 @@ function wire() {
         timeCur: $('kf_time_cur'),
         timeEnd: $('kf_time_end'),
         empty: $('kf_empty'),
+        saveScript: $('kf_save_script'),
+        loadScript: $('kf_load_script'),
+        scriptFile: $('kf_script_file'),
     };
 
     el.add.onclick = addKeyframe;
     el.clear.onclick = clearKeyframes;
     el.preview.onclick = () => { previewRAF ? stopPreview() : previewPlayback(); };
     el.exportBtn.onclick = exportMP4;
+    if (el.saveScript) el.saveScript.onclick = saveRenderScript;
+    if (el.loadScript) el.loadScript.onclick = () => el.scriptFile && el.scriptFile.click();
+    if (el.scriptFile) el.scriptFile.onchange = (e) => {
+        const f = e.target.files[0];
+        if (f) loadRenderScriptFile(f);
+        e.target.value = ''; // allow re-loading the same file
+    };
     el.res.onchange = () => {
         el.custom.style.display = el.res.value === 'custom' ? 'inline-flex' : 'none';
     };
