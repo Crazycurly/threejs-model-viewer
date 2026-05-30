@@ -30,8 +30,6 @@ var loadFiles = function (files) {
            // loadingDae = false;
             loadingObj = true;
 
-            scene.remove(sample_model);
-            removeModel();
             modelLoaded = true;
             console.log(obj_path);
         }
@@ -48,8 +46,6 @@ var loadFiles = function (files) {
            // loadingObj = false;
             loadingDae = true;
 
-            scene.remove(sample_model);
-            removeModel();
             modelLoaded = true;
             console.log(dae_path);
         }
@@ -59,8 +55,6 @@ var loadFiles = function (files) {
             gltf_path = files[i].name;
             loadingGLTF = true;
 
-            scene.remove(sample_model);
-            removeModel();
             modelLoaded = true;
             console.log(gltf_path);
         }
@@ -70,8 +64,6 @@ var loadFiles = function (files) {
             fbx_path = files[i].name;
             loadingFBX = true;
 
-            scene.remove(sample_model);
-            removeModel();
             modelLoaded = true;
             console.log(fbx_path);
         }
@@ -160,9 +152,7 @@ var loadFiles = function (files) {
                 }
 
             });
-       
-            setCamera(model);
-            smooth.disabled = true;
+                   smooth.disabled = true;
             document.getElementById('smooth-model').innerHTML = "Smooth Model (Disabled)";
 
             setBoundBox(model);
@@ -178,11 +168,7 @@ var loadFiles = function (files) {
 
             model.position.set(0, 0, 0);
 
-            selectedObject = model;
-            outlinePass.selectedObjects = [selectedObject];
-            outlinePass.enabled = false;
-
-            scene.add(model);
+            registerModel(model, primaryName); //add to scene + select (handles camera/outline)
         });
        
     }
@@ -235,8 +221,6 @@ var loadFiles = function (files) {
                 }
 
             });
-
-            setCamera(model);
             smooth.disabled = true;
             document.getElementById('smooth-model').innerHTML = "Smooth Model (Disabled)";  
 
@@ -252,11 +236,7 @@ var loadFiles = function (files) {
 
             model.position.set(0, 0, 0);
 
-            selectedObject = model;
-            outlinePass.selectedObjects = [selectedObject];
-            outlinePass.enabled = false;
-
-            scene.add(model);
+            registerModel(model, primaryName); //add to scene + select (handles camera/outline)
         });
     }
     
@@ -321,18 +301,12 @@ var loadFiles = function (files) {
             });
 
             model.position.set(0, 0, 0);
-
-            setCamera(model);
             scaleUp(model); scaleDown(model);
 
             fixRotation(model);
             resetRotation(model);
 
-            selectedObject = model;
-            outlinePass.selectedObjects = [selectedObject];
-            outlinePass.enabled = false;
-
-            scene.add(model);
+            registerModel(model, primaryName); //add to scene + select (handles camera/outline)
         });
     }
 
@@ -372,7 +346,6 @@ var loadFiles = function (files) {
                     }
                 });
 
-                setCamera(model);
                 setSmooth(model);
 
                 model.position.set(0, 0, 0);
@@ -388,11 +361,7 @@ var loadFiles = function (files) {
                 fixRotation(model);
                 resetRotation(model);
 
-                selectedObject = model;
-                outlinePass.selectedObjects = [selectedObject];
-                outlinePass.enabled = false;
-
-                scene.add(model);
+                registerModel(model, primaryName); //add to scene + select (handles camera/outline)
             });
         });
     }

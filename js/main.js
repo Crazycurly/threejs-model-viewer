@@ -6,6 +6,12 @@ if (!Detector.webgl) Detector.addGetWebGLMessage();
 var camera, camerHelper, scene, renderer, loader,
     stats, controls, numOfMeshes = 0, model, modelDuplicate, sample_model, wireframe, mat, scale, delta;
 
+//MULTI-MODEL GLOBALS
+var loadedModels = [];      // [{ obj, name }] — every model currently in the scene
+var selectedModel = null;   // the model the gizmo + transform panel act on
+var transformControls;      // shared move/rotate/scale gizmo
+var raycaster;              // click-to-select picking
+
 const manager = new THREE.LoadingManager();
 
 var modelLoaded = false, sample_model_loaded = false;
@@ -68,11 +74,12 @@ var winDims = [window.innerWidth * 0.8, window.innerHeight * 0.89]; //size of re
 function onload() {
 
     //window.addEventListener('resize', onWindowResize, false);
-    switchScene(0);
+    initScene();
+    loadSampleModel(0);
     animate();
 }
 
-function initScene(index) {
+function initScene() {
 
     scene = new THREE.Scene();
 
@@ -188,10 +195,29 @@ function initScene(index) {
     composer.addPass( fxaaPass );
 
     window.fxaaPass = fxaaPass; // exposed so videoExport.js can rescale AA at export resolution
-    
-    /*LOAD SAMPLE MODELS*/
+
+    outlinePass.enabled = false; //glow off by default (toggled by #glow_check)
+
+    loader = new THREE.OBJLoader(manager); //shared OBJ loader (sample models + user .obj files)
+
+    // Single shared transform gizmo for moving/rotating/scaling the selected model
+    transformControls = new THREE.TransformControls(camera, renderer.domElement);
+    scene.add(transformControls);
+    // Stop OrbitControls from fighting the gizmo while dragging it (r90 has no
+    // 'dragging-changed' event, so gate on mouseDown/mouseUp instead)
+    transformControls.addEventListener('mouseDown', function () { controls.enabled = false; });
+    transformControls.addEventListener('mouseUp', function () { controls.enabled = true; });
+    transformControls.addEventListener('objectChange', function () { syncPanelFromModel(); });
+
+    raycaster = new THREE.Raycaster();
+
+    initModelManager(); //wire click-to-select + transform panel (modelManager.js)
+}
+
+/*LOAD SAMPLE MODELS*/
+function loadSampleModel(index) {
+
     var sceneInfo = modelList[index]; //index from array of sample models in html select options
-    loader = new THREE.OBJLoader(manager);
     var url = sceneInfo.url;
 
     // Remember the sample model's URL so videoExport.js can fetch + embed it
@@ -227,7 +253,7 @@ function initScene(index) {
                 numOfMeshes++;
                 var geometry = child.geometry;
                 stats(sceneInfo.name, geometry, numOfMeshes);
-                
+
                 child.material = materials.default_material;
 
                 var wireframe2 = new THREE.WireframeGeometry(child.geometry);
@@ -244,8 +270,6 @@ function initScene(index) {
             }
         });
 
-        setCamera(sample_model);
-
         setSmooth(sample_model);
 
         setBoundBox(sample_model);
@@ -256,15 +280,9 @@ function initScene(index) {
         scaleUp(sample_model);
         scaleDown(sample_model);
 
-        selectedObject = sample_model;
-        outlinePass.selectedObjects = [selectedObject];
-        outlinePass.enabled = false;
-
-        scene.add(sample_model);
+        registerModel(sample_model, sceneInfo.name); //add + select (handles camera/outline/scene.add)
 
     }, onProgress, onError);
-
-
 }
 
 function removeModel() {
@@ -303,9 +321,7 @@ function removeModel() {
     animsDiv.style.display = "none"; //Hide animation <div>
 }
 
-$('#remove').click(function () {
-    removeModel();
-});
+// #remove (now "Remove Selected") is wired in modelManager.js → removeSelectedModel()
 
 $("#red, #green, #blue, #ambient_red, #ambient_green, #ambient_blue").slider({
     change: function (event, ui) {
@@ -352,7 +368,11 @@ function animate() {
         mixer.update(delta);
     }
     controls.update(delta);
-    
+
+    if (transformControls && transformControls.object) {
+        transformControls.update(); // keep gizmo sized/oriented as the camera orbits
+    }
+
     composer.render();
     render();
 
@@ -380,33 +400,16 @@ var modelList = [
             }
 ];
 
-function switchScene(index) {
-
-    clear();
-    initScene(index);
-    var elt = document.getElementById('scenes_list');
-    elt.selectedIndex = index;
-
-}
-
+// Sample-model dropdown — additive: append the chosen sample to the scene
 function selectModel() {
 
     var select = document.getElementById("scenes_list");
     var index = select.selectedIndex;
 
     if (index >= 0) {
-        removeModel();     
-        switchScene(index);
+        loadSampleModel(index);
     }
 
-}
-
-function clear() {
-
-    if (view && renderer) {
-        view.removeChild(renderer.domElement);
-        document.body.style.background = "#292121";
-    }
 }
 
 onload();

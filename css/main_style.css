@@ -516,3 +516,85 @@ input:checked + .grid:before {
 .ui-dialog-title{
     font-size: 20px;
 }
+
+/* ---- Transform / Move panel ---- */
+.model_list{
+    max-height: 140px;
+    overflow-y: auto;
+    background: #3c3d3f;
+    border: 1px solid #2c2d2f;
+    border-radius: 4px;
+}
+.model_list .ml_empty{
+    padding: 8px;
+    color: #aaa;
+    font-size: 13px;
+    text-align: center;
+}
+.model_list .ml_row{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 8px;
+    border-bottom: 1px solid #2c2d2f;
+    cursor: pointer;
+}
+.model_list .ml_row:hover{ background: #4f5052; }
+.model_list .ml_row.ml_selected{ background: #009999; }
+.model_list .ml_name{
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+}
+.model_list .ml_del{
+    background: transparent;
+    border: none;
+    color: #ff8a8a;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+}
+.model_list .ml_del:hover{ color: #ff3b3b; }
+
+.tc_mode_row, .tc_remove_row{
+    display: flex;
+    gap: 6px;
+}
+.tc_mode_row button, .tc_remove_row button{
+    flex: 1;
+    padding: 6px 4px;
+    border: 1px solid #ccc;
+    color: #fff;
+    background: #4B5F83;
+    cursor: pointer;
+    font-size: 13px;
+}
+.tc_mode_row button:hover, .tc_remove_row button:hover{ background: #009999; }
+.tc_mode_row button.tc_active{ background: #009999; border-color: #00d0d0; }
+
+.xyz_row{
+    display: flex;
+    gap: 6px;
+}
+.xyz_row label{
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 12px;
+    color: #ddd;
+}
+.xyz_row input[type="number"]{
+    width: 100%;
+    min-width: 0;
+    padding: 3px 4px;
+    border: 1px solid #2c2d2f;
+    border-radius: 3px;
+    background: #2c2d2f;
+    color: #fff;
+    font-size: 12px;
+}
+.xyz_row input[type="number"]:disabled{ opacity: 0.4; }

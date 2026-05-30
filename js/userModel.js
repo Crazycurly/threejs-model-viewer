@@ -67,9 +67,6 @@ var loadFile = function (file) {
 
         case 'obj':
 
-            //When file type matches case - remove sample model or remove previously loaded model from user file
-            scene.remove(sample_model);
-            removeModel();
             modelLoaded = true;
 
             reader.addEventListener( 'load', function ( event ) {
@@ -107,8 +104,6 @@ var loadFile = function (file) {
 
                 }
             });
-                
-            setCamera(model);
 
             setSmooth(model);
 
@@ -128,11 +123,7 @@ var loadFile = function (file) {
             fixRotation(model);
             resetRotation(model);
 
-            selectedObject = model;
-            outlinePass.selectedObjects = [selectedObject];
-            outlinePass.enabled = false;
-
-            scene.add(model);             
+            registerModel(model, filename); //add to scene + select (handles camera/outline)
 
         }, false );
         reader.readAsText( file );
@@ -143,13 +134,10 @@ var loadFile = function (file) {
 
             reader.addEventListener('load', function (event) {
 
-                //When file type matches case - remove sample model or remove previously loaded model from user file
-                scene.remove(sample_model);
-                removeModel();
                 modelLoaded = true;
-                
+
                 var contents = event.target.result;
-              
+
                 try {
                     var geometry = new THREE.STLLoader(manager).parse(contents);
                     console.log(geometry);
@@ -186,7 +174,6 @@ var loadFile = function (file) {
                     }
                 });
 
-                setCamera(model);
                 setSmooth(model);
 
                 model.position.set(0, 0, 0);
@@ -202,11 +189,7 @@ var loadFile = function (file) {
                 fixRotation(model);
                 resetRotation(model);
 
-                selectedObject = model;
-                outlinePass.selectedObjects = [selectedObject];
-                outlinePass.enabled = false;
-
-                scene.add(model);
+                registerModel(model, filename); //add to scene + select (handles camera/outline)
 
             }, false);
 
@@ -229,9 +212,6 @@ var loadFile = function (file) {
 
             reader.addEventListener('load', function (event) {
 
-                //When file type matches case - remove sample model or remove previously loaded model from user file
-                scene.remove(sample_model);
-                removeModel();
                 modelLoaded = true;
 
                 var contents = event.target.result;
@@ -251,7 +231,6 @@ var loadFile = function (file) {
                 
                 colladaMerge(dae, filename);
 
-                setCamera(model);
                 setBoundBox(model);
                 setPolarGrid(model);
                 setGrid(model);
@@ -263,11 +242,7 @@ var loadFile = function (file) {
                 fixRotation(model);
                 resetRotation(model);
 
-                selectedObject = model;
-                outlinePass.selectedObjects = [selectedObject];
-                outlinePass.enabled = false;
-
-                scene.add(model);
+                registerModel(model, filename); //add to scene + select (handles camera/outline)
 
             }, false);
             reader.readAsText(file);
@@ -278,8 +253,6 @@ var loadFile = function (file) {
 
             reader.addEventListener('load', function (event) {
 
-                scene.remove(sample_model);
-                removeModel();
                 modelLoaded = true;
                 fbxLoaded = true;
 
@@ -328,7 +301,6 @@ var loadFile = function (file) {
                     
                 });
 
-                setCamera(model);
                 smooth.disabled = true;
                 document.getElementById('smooth-model').innerHTML = "Smooth Model (Disabled)";
 
@@ -345,11 +317,7 @@ var loadFile = function (file) {
                 fixRotation(model);
                 resetRotation(model);
 
-                selectedObject = model;
-                outlinePass.selectedObjects = [selectedObject];
-                outlinePass.enabled = false;
-
-                scene.add(model);
+                registerModel(model, filename); //add to scene + select (handles camera/outline)
 
             }, false);
             reader.readAsArrayBuffer(file);
@@ -361,8 +329,6 @@ var loadFile = function (file) {
 
             reader.addEventListener('load', function (event) {
 
-                scene.remove(sample_model);
-                removeModel();
                 modelLoaded = true;
                 gltfLoaded = true;
 
@@ -411,7 +377,6 @@ var loadFile = function (file) {
                     });
 
 
-                    setCamera(model);
                     smooth.disabled = true;
                     document.getElementById('smooth-model').innerHTML = "Smooth Model (Disabled)";
 
@@ -428,11 +393,7 @@ var loadFile = function (file) {
                     fixRotation(model);
                     resetRotation(model);
 
-                    selectedObject = model;
-                    outlinePass.selectedObjects = [selectedObject];
-                    outlinePass.enabled = false;
-
-                    scene.add(model);
+                    registerModel(model, filename); //add to scene + select (handles camera/outline)
 
                 }, onError);
 

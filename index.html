@@ -269,8 +269,55 @@
                         </li>         
                         <li><input id="modelPlusTexture" type="file" name="files[]" multiple="" class="model-upload"></li>
 
-                        <li><button type="button" id="remove"><i style="margin-right: 5px;" class="fa fa-trash"></i> Remove file</button></li>
+                        <li><button type="button" id="remove"><i style="margin-right: 5px;" class="fa fa-trash"></i> Remove Selected</button></li>
                         <li><output id="result" /></li>
+                    </ul>
+                </li>
+
+                <li class='dropdown'>
+                    <a href='#'><img src="images/rotation.png" class="image" />Transform / Move</a>
+                    <ul>
+                        <li style="background: #d9d9f2; color: black; text-align: center">Click a model in the viewer to select it, then drag the gizmo or type values below.</li>
+
+                        <li><span>Loaded Models</span></li>
+                        <li><div id="model_list" class="model_list"></div></li>
+                        <li class="tc_remove_row">
+                            <button type="button" id="remove_selected"><i class="fa fa-trash"></i> Remove Selected</button>
+                            <button type="button" id="remove_all"><i class="fa fa-trash-o"></i> Remove All</button>
+                        </li>
+
+                        <li><hr style="margin-top:12px" /></li>
+                        <li><span>Gizmo Mode</span></li>
+                        <li class="tc_mode_row">
+                            <button type="button" id="tc_translate" class="tc_active">Move</button>
+                            <button type="button" id="tc_rotate">Rotate</button>
+                            <button type="button" id="tc_scale">Scale</button>
+                        </li>
+
+                        <li><hr style="margin-top:12px" /></li>
+                        <li><span>Position</span></li>
+                        <li class="xyz_row">
+                            <label>X <input type="number" id="pos_x" step="0.1" disabled></label>
+                            <label>Y <input type="number" id="pos_y" step="0.1" disabled></label>
+                            <label>Z <input type="number" id="pos_z" step="0.1" disabled></label>
+                        </li>
+
+                        <li><span>Rotation (deg)</span></li>
+                        <li class="xyz_row">
+                            <label>X <input type="number" id="rot_x" step="1" disabled></label>
+                            <label>Y <input type="number" id="rot_y" step="1" disabled></label>
+                            <label>Z <input type="number" id="rot_z" step="1" disabled></label>
+                        </li>
+
+                        <li><span>Scale</span></li>
+                        <li class="xyz_row">
+                            <label>X <input type="number" id="scl_x" step="0.1" disabled></label>
+                            <label>Y <input type="number" id="scl_y" step="0.1" disabled></label>
+                            <label>Z <input type="number" id="scl_z" step="0.1" disabled></label>
+                        </li>
+                        <li class="xyz_row">
+                            <label style="flex:1">Uniform <input type="number" id="scl_uniform" step="0.1" disabled></label>
+                        </li>
                     </ul>
                 </li>
             </ul>
@@ -433,6 +480,7 @@
 
         <script src="js/menu.js"></script>
         <script src="js/utils.js"></script>
+        <script src="js/modelManager.js"></script>
         <script src="js/main.js"></script>
         <script src="js/userModelTextures.js"></script>
         <script src="js/userModel.js"></script>
