@@ -222,6 +222,76 @@ function refreshModelListUI() {
     });
 }
 
+/* ---------- WASD camera movement ---------- */
+
+var cameraMove = { forward: false, back: false, left: false, right: false, up: false, down: false };
+
+var _camFwd = new THREE.Vector3();
+var _camRight = new THREE.Vector3();
+var _camMove = new THREE.Vector3();
+var _camUp = new THREE.Vector3(0, 1, 0);
+
+// True while the user is typing in a panel field — don't hijack those keys.
+function isTypingTarget() {
+    var el = document.activeElement;
+    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ||
+                  el.tagName === 'SELECT' || el.isContentEditable);
+}
+
+function setupCameraKeys() {
+
+    function set(e, val) {
+        if (isTypingTarget()) return;
+        switch ((e.key || '').toLowerCase()) {
+            case 'w': cameraMove.forward = val; break;
+            case 's': cameraMove.back = val; break;
+            case 'a': cameraMove.left = val; break;
+            case 'd': cameraMove.right = val; break;
+            case 'e': cameraMove.up = val; break;   // rise
+            case 'q': cameraMove.down = val; break;  // descend
+            default: return;
+        }
+        e.preventDefault();
+    }
+
+    window.addEventListener('keydown', function (e) { set(e, true); });
+    window.addEventListener('keyup', function (e) { set(e, false); });
+    // Drop all keys if the window loses focus so movement doesn't "stick".
+    window.addEventListener('blur', function () {
+        cameraMove.forward = cameraMove.back = cameraMove.left =
+        cameraMove.right = cameraMove.up = cameraMove.down = false;
+    });
+}
+
+// Called every frame from animate() in main.js. Pans the camera + orbit target
+// together so OrbitControls stays consistent. Speed scales with zoom distance.
+function updateCameraMove(delta) {
+
+    if (!controls || !camera) return;
+    if (!(cameraMove.forward || cameraMove.back || cameraMove.left ||
+          cameraMove.right || cameraMove.up || cameraMove.down)) return;
+
+    camera.getWorldDirection(_camFwd);
+    _camRight.crossVectors(_camFwd, _camUp).normalize();
+
+    _camMove.set(0, 0, 0);
+    if (cameraMove.forward) _camMove.add(_camFwd);
+    if (cameraMove.back)    _camMove.sub(_camFwd);
+    if (cameraMove.right)   _camMove.add(_camRight);
+    if (cameraMove.left)    _camMove.sub(_camRight);
+    if (cameraMove.up)      _camMove.add(_camUp);
+    if (cameraMove.down)    _camMove.sub(_camUp);
+
+    if (_camMove.lengthSq() === 0) return;
+    _camMove.normalize();
+
+    var speed = Math.max(controls.target.distanceTo(camera.position), 1) * 1.2 * delta;
+    _camMove.multiplyScalar(speed);
+
+    camera.position.add(_camMove);
+    controls.target.add(_camMove);
+}
+
 /* ---------- init ---------- */
 
 // Called once from initScene() in main.js, after the gizmo + raycaster exist.
@@ -251,6 +321,7 @@ function initModelManager() {
 
     wireTransformPanel();
     refreshModelListUI();
+    setupCameraKeys(); // WASD/QE camera fly controls
 
     // Keep the gizmo hidden while the video exporter renders the scene itself.
     (function tickGizmo() {

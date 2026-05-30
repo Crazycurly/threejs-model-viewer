@@ -367,6 +367,8 @@ function animate() {
     if (mixer) {
         mixer.update(delta);
     }
+
+    updateCameraMove(delta); // WASD/QE pan the camera + orbit target
     controls.update(delta);
 
     if (transformControls && transformControls.object) {
