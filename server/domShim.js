@@ -47,16 +47,31 @@ function installEnvironment() {
     const doc = win.document;
 
     // jsdom's <canvas> has no WebGL; route canvas creation to a gl-backed one.
+    // Image creation is routed to a stub that "loads" instantly (jsdom can't
+    // decode), so loaders that resolve textures (e.g. GLTFLoader) don't hang or
+    // throw — geometry loads; pixels of the texture are best-effort.
     const origCreate = doc.createElement.bind(doc);
     doc.createElement = function (tag) {
-        if (String(tag).toLowerCase() === 'canvas') return makeGLCanvas(1, 1);
+        const t = String(tag).toLowerCase();
+        if (t === 'canvas') return makeGLCanvas(1, 1);
+        if (t === 'img') return makeStubImage();
         return origCreate(tag);
     };
     const origCreateNS = doc.createElementNS.bind(doc);
     doc.createElementNS = function (ns, tag) {
-        if (String(tag).toLowerCase() === 'canvas') return makeGLCanvas(1, 1);
+        const t = String(tag).toLowerCase();
+        if (t === 'canvas') return makeGLCanvas(1, 1);
+        if (t === 'img') return makeStubImage();
         return origCreateNS(ns, tag);
     };
+
+    // Blob URLs: jsdom lacks URL.createObjectURL; loaders use it for embedded
+    // (GLB) textures. Hand back a throwaway string — the stub image ignores it.
+    if (!win.URL.createObjectURL) win.URL.createObjectURL = () => 'blob:stub';
+    if (!win.URL.revokeObjectURL) win.URL.revokeObjectURL = () => {};
+    if (typeof global.URL !== 'undefined' && !global.URL.createObjectURL) {
+        try { global.URL.createObjectURL = win.URL.createObjectURL; global.URL.revokeObjectURL = win.URL.revokeObjectURL; } catch (e) {}
+    }
 
     // Some of these (e.g. navigator) are read-only getters on modern Node, so
     // assign defensively.
@@ -69,7 +84,9 @@ function installEnvironment() {
     setGlobal('document', doc);
     setGlobal('self', win);
     if (win.navigator) setGlobal('navigator', win.navigator);
-    setGlobal('Image', win.Image);
+    const ImageCtor = function () { return makeStubImage(); };
+    setGlobal('Image', ImageCtor);
+    win.Image = ImageCtor;
     setGlobal('HTMLElement', win.HTMLElement);
     setGlobal('HTMLCanvasElement', win.HTMLCanvasElement);
     setGlobal('DOMParser', win.DOMParser);
@@ -82,6 +99,31 @@ function installEnvironment() {
 
     _installed = true;
     return win;
+}
+
+// A 1x1 stub <img>: fires 'load' on the next tick when src is set, so texture
+// loaders resolve immediately. jsdom can't decode, so the pixels are blank —
+// geometry/material structure loads fine; textured appearance is best-effort.
+function makeStubImage() {
+    const listeners = {};
+    const img = {
+        width: 1, height: 1, naturalWidth: 1, naturalHeight: 1, complete: false,
+        addEventListener(type, fn) { (listeners[type] || (listeners[type] = [])).push(fn); },
+        removeEventListener(type, fn) { listeners[type] = (listeners[type] || []).filter(f => f !== fn); },
+    };
+    let _src = '';
+    Object.defineProperty(img, 'src', {
+        get() { return _src; },
+        set(v) {
+            _src = v;
+            setTimeout(() => {
+                img.complete = true;
+                if (typeof img.onload === 'function') img.onload({ target: img });
+                (listeners['load'] || []).forEach(fn => fn({ target: img }));
+            }, 0);
+        },
+    });
+    return img;
 }
 
 // A canvas-like object backed by a headless-gl WebGL1 context. preserveDrawingBuffer
